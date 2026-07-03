@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+    <style type="text/css">
+        body {
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #info {
+            padding: 1rem;
+            display: flex;
+            flex-direction: row;
+            gap: 2rem;
+        }
+
+        #board {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            padding: 5px;
+            background-color: #000;
+            width: fit-content;
+        }
+
+        .row {
+            display: flex;
+            flex-direction: row;
+            gap: 5px;
+        }
+
+        .buttons {
+            padding: 1rem;
+            display: flex;
+            flex-direction: row;
+            gap: 2rem;
+        }
+
+        .cell {
+            height: 60px;
+            width: 60px;
+            font-size: 30px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #FFF;
+        }
+
+        .cell:hover {
+            background-color: #F00;
+            transition: 0.5s;
+            cursor: pointer;
+        }
+
+        .previousCell {
+            background-color: #FAA;
+        }
+    </style>
+</head>
+<body>
+
+<h3 id="info"></h3>
+
+<div id="board"></div>
+
+<div class="buttons">
+    <button onclick="N()">
+        <i class="fa fa-arrow-up"></i> (N)
+    </button>
+
+    <button onclick="S()">
+        <i class="fa fa-arrow-down"></i> (S)
+    </button>
+
+    <button onclick="E()">
+        <i class="fa fa-arrow-right"></i> (E)
+    </button>
+
+    <button onclick="O()">
+        <i class="fa fa-arrow-left"></i> (O)
+    </button>
+</div>
+
+<div class="buttons">
+    <button onclick="tormenta()">
+    <i class="fa fa-cloud"></i> TORMENTA
+    </button>
+    <button onclick="catapulta()">
+        <i class="fa fa-rocket"></i> CATAPULTA
+    </button>
+</div>
+
+</body>
+
+<script>
+
+//---------------------------------------------------------
+// BASE DE HECHOS (BH)
+//---------------------------------------------------------
+let estado = {
+    aviones: [
+        { x: 3, y: 1, jugador: "J1" },
+        { x: 4, y: 6, jugador: "J2"  }
+    ],
+    catapultas: [],
+    tormentas: [],
+    turno: "J1",
+    vueloActivo: null,
+    fin: false,
+    ganador: null
+};
+
+//---------------------------------------------------------
+// Funciones auxiliares
+//---------------------------------------------------------
+function movimiento(dir, x, y) {
+    if (dir === "N") return { x, y: y - 1 };
+    if (dir === "S") return { x, y: y + 1 };
+    if (dir === "E") return { x: x + 1, y };
+    if (dir === "O") return { x: x - 1, y };
+    return { x, y };
+}
+
+function dentro(x, y) {
+    return x >= 1 && x <= 6 && y >= 1 && y <=6;
+}
+
+function contieneCoordenadas(arr, x, y) {
+    let i = 0;
+    while (i < arr.length) {
+        if (arr[i].x === x && arr[i].y === y) {
+            return true;
+        }
+        i++;
+    }
+    return false;
+}
+
+function cambioTurno() {
+    if (estado.turno === "J1") estado.turno = "J2";
+    else if (estado.turno === "J2") estado.turno = "J1";
+}
+
+//---------------------------------------------------------
+// Reglas (BR)
+//---------------------------------------------------------
+
+function R1(dir) { // Rodar a casilla vacía
+    if (estado.vueloActivo || estado.fin) return false;
+    let avion = estado.aviones.find((a) => a.jugador === estado.turno);
+    const nuevaPos = movimiento(dir, avion.x, avion.y);
+
+    if (!dentro(nuevaPos.x, nuevaPos.y)) return false; 
+    if (contieneCoordenadas(estado.tormentas, nuevaPos.x, nuevaPos.y)) return false; 
+    if (contieneCoordenadas(estado.catapultas, nuevaPos.x, nuevaPos.y)) return false; 
+
+    let otroAvion = estado.aviones.find((a) => a.x === nuevaPos.x && a.y === nuevaPos.y);
+    if (otroAvion) return false;
+
+    avion.x = nuevaPos.x;
+    avion.y = nuevaPos.y;
+    cambioTurno();
+    return true;
+}
+
+function R2(dir) { // Rodar hacia Catapulta (Despegue)
+    if (estado.vueloActivo || estado.fin) return false;
+    let avion = estado.aviones.find((a) => a.jugador === estado.turno);
+    const nuevaPos = movimiento(dir, avion.x, avion.y);
+
+    if (!dentro(nuevaPos.x, nuevaPos.y)) return false;
+    if (!contieneCoordenadas(estado.catapultas, nuevaPos.x, nuevaPos.y)) return false;
+
+    avion.x = nuevaPos.x;
+    avion.y = nuevaPos.y;
+    estado.vueloActivo = { jugador: estado.turno, direccion: dir };
+    return true;
+}
+
+function R3() { // Fase Automática (Sobrevolar Obstáculos)
+    if (!estado.vueloActivo) return false;
+    let avion = estado.aviones.find((a) => a.jugador === estado.vueloActivo.jugador);
+    const nuevaPos = movimiento(estado.vueloActivo.direccion, avion.x, avion.y);
+
+    if (!dentro(nuevaPos.x, nuevaPos.y)) return false; 
+
+    let hayObstaculo = contieneCoordenadas(estado.tormentas, nuevaPos.x, nuevaPos.y) || 
+                       estado.aviones.some(a => a.x === nuevaPos.x && a.y === nuevaPos.y);
+
+    if (hayObstaculo) {
+        avion.x = nuevaPos.x;
+        avion.y = nuevaPos.y;
+        return true;
+    }
+    return false;
+}
+
+function R4() { // Fase Automática: Aterrizaje en Catapulta (Combo)
+    if (!estado.vueloActivo) return false;
+    let avion = estado.aviones.find((a) => a.jugador === estado.vueloActivo.jugador);
+    const nuevaPos = movimiento(estado.vueloActivo.direccion, avion.x, avion.y);
+
+    if (!dentro(nuevaPos.x, nuevaPos.y)) return false;
+
+    if (contieneCoordenadas(estado.catapultas, nuevaPos.x, nuevaPos.y)) {
+        avion.x = nuevaPos.x;
+        avion.y = nuevaPos.y;
+        return true;
+    }
+    return false;
+}
+
+function R5() { // Fase Automática (Aterrizaje en Casilla Vacía)
+    if (!estado.vueloActivo) return false;
+    let avion = estado.aviones.find((a) => a.jugador === estado.vueloActivo.jugador);
+    const nuevaPos = movimiento(estado.vueloActivo.direccion, avion.x, avion.y);
+
+    if (!dentro(nuevaPos.x, nuevaPos.y)) {
+        // Fuera de tablero durante el vuelo: aterriza forzosamente en el borde (o pierde el vuelo)
+        // Para simplificar, paramos el vuelo y cambiamos turno.
+        estado.vueloActivo = null;
+        cambioTurno();
+        return true; 
+    }
+
+    let hayObstaculo = contieneCoordenadas(estado.tormentas, nuevaPos.x, nuevaPos.y) || 
+                       estado.aviones.some(a => a.x === nuevaPos.x && a.y === nuevaPos.y);
+    let hayCatapulta = contieneCoordenadas(estado.catapultas, nuevaPos.x, nuevaPos.y);
+
+    if (!hayObstaculo && !hayCatapulta) {
+        avion.x = nuevaPos.x;
+        avion.y = nuevaPos.y;
+        estado.vueloActivo = null;
+        cambioTurno();
+        return true;
+    }
+    return false;
+}
+
+function R6(nuevaPos) { // Colocar tormenta
+    if (estado.vueloActivo || estado.fin) return false;
+    if (!dentro(nuevaPos.x, nuevaPos.y)) return false; 
+
+    if (contieneCoordenadas(estado.aviones, nuevaPos.x, nuevaPos.y)) return false; 
+    if (contieneCoordenadas(estado.tormentas, nuevaPos.x, nuevaPos.y)) return false; 
+    if (contieneCoordenadas(estado.catapultas, nuevaPos.x, nuevaPos.y)) return false; 
+
+    estado.tormentas.push(nuevaPos);
+    cambioTurno();
+    return true;
+}
+
+function R7(nuevaPos) { // Colocar catapulta (Simple, no teletransporte)
+    if (estado.vueloActivo || estado.fin) return false;
+    if (!dentro(nuevaPos.x, nuevaPos.y)) return false; 
+
+    if (contieneCoordenadas(estado.aviones, nuevaPos.x, nuevaPos.y)) return false; 
+    if (contieneCoordenadas(estado.tormentas, nuevaPos.x, nuevaPos.y)) return false; 
+    if (contieneCoordenadas(estado.catapultas, nuevaPos.x, nuevaPos.y)) return false; 
+
+    estado.catapultas.push(nuevaPos);
+    cambioTurno();
+    return true;
+}
+
+function R8() { // Victoria de J1
+    let avion = estado.aviones.find((a) => a.jugador === "J1");
+    if (avion.y === 6) {
+        estado.fin = true;
+        estado.ganador = "J1";
+        return true;
+    }
+    return false;
+}
+
+function R9() { // Victoria de J2
+    let avion = estado.aviones.find((a) => a.jugador === "J2");
+    if (avion.y === 1) {
+        estado.fin = true;
+        estado.ganador = "J2";
+        return true;
+    }
+    return false;
+}
+
+//---------------------------------------------------------
+// Motor de inferencia (Bucle while real)
+//---------------------------------------------------------
+
+function resolverVuelo() {
+    // Bucle del motor de inferencia para la fase automática
+    while (estado.vueloActivo && !estado.fin) {
+        // En cada iteración del vuelo, evaluamos las reglas de vuelo por prioridad
+        if (R8() || R9()) break;
+
+        let reglaAplicada = R4() || R5() || R3(); 
+        // Primero intentamos aterrizar en catapulta, luego en vacía, y por último sobrevolar
+
+        if (!reglaAplicada) {
+            // Si el avión fuera a salir del mapa o algo imprevisto
+            estado.vueloActivo = null;
+            cambioTurno();
+            break;
+        }
+    }
+}
+
+function move(dir) {
+    if (!estado.fin && !estado.vueloActivo) {
+        if (!R1(dir)) {
+            R2(dir); // Si no puede hacer movimiento simple, intenta despegue
+        }
+    }
+
+    resolverVuelo(); // Llama al bucle automático
+    update();
+}
+
+function N() { move("N"); }
+function S() { move("S"); }
+function E() { move("E"); }
+function O() { move("O"); }
+
+let selectionMode = null;
+
+function tormenta() { selectionMode = "T"; }
+function catapulta() { selectionMode = "C"; }
+
+function cellClicked(x, y) {
+    if (estado.fin) return;
+
+    const pos = { x: Number(x), y: Number(y) };
+    if (selectionMode === "T") {
+        R6(pos);
+        selectionMode = null;
+    } else if (selectionMode === "C") {
+        R7(pos);
+        selectionMode = null;
+    }
+    update();
+}
+
+function update() {
+    if (!estado.fin) {
+        R8();
+        R9();
+    }
+    render();
+}
+
+// Render
+function render() {
+    let board = document.getElementById("board");
+    board.innerHTML = "";
+    for (var y = 1; y <= 6; y++) {
+        let row = document.createElement("div");
+        row.className = "row";
+        for (var x = 1; x <= 6; x++) {
+            let cell = document.createElement("div");
+            cell.className = "cell";
+
+            // Distintivos J1 y J2
+            let avionEnCasilla = estado.aviones.find(a => a.x === x && a.y === y);
+            if (avionEnCasilla) {
+                const icon = document.createElement("i");
+                icon.className = "fa fa-plane";
+                if (avionEnCasilla.jugador === "J1") icon.style.color = "blue";
+                if (avionEnCasilla.jugador === "J2") icon.style.color = "red";
+                cell.appendChild(icon);
+            } else if (contieneCoordenadas(estado.catapultas, x, y)) {
+                const icon = document.createElement("i");
+                icon.className = "fa fa-rocket";
+                cell.appendChild(icon);
+            } else if (contieneCoordenadas(estado.tormentas, x, y)) {
+                const icon = document.createElement("i");
+                icon.className = "fa fa-cloud";
+                cell.appendChild(icon);
+            }
+
+            cell.setAttribute("x", x);
+            cell.setAttribute("y", y);
+            row.appendChild(cell);
+        }
+        board.appendChild(row);
+    }
+
+    const cells = document.getElementsByClassName("cell");
+    for (let i = 0; i < cells.length; i++) {
+        cells[i].onclick = () => cellClicked(
+            cells[i].getAttribute("x"),
+            cells[i].getAttribute("y")
+        );
+    }
+
+    if (estado.ganador) {
+        document.getElementById("info").innerText = '¡Gana ' + estado.ganador + '!';
+    } else {
+        document.getElementById("info").innerText = 'Es el turno de ' + estado.turno;
+    }
+}
+update();
+
+</script>
+</html>
